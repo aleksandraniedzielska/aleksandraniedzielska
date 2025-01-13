@@ -1,0 +1,208 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import math
+import random
+
+def create_symmetrical_matrix(dimension):
+    """
+    Generates a symmetrical matrix based on the moves count matrix, representing
+    the potential movement frequency between neighboring lipid sites.
+
+    Args:
+        moves_count: Matrix representing the counts of moves for each position.
+
+    Returns:
+        A symmetrical matrix where each entry represents the average movement frequency
+        between neighboring sites.
+    """
+    #matrix = np.random.rand(dimension, dimension)
+    matrix = np.array([[1, 0.1, 0.1,1],
+                   [0.1, 0.1, 0.1, 0.1],
+                   [0.1, 0.1, 0.1, 0.1],
+                   [1, 0.1, 0.1, 1]])
+
+    symmetric_matrix = (matrix + matrix.T) / 2
+    return symmetric_matrix
+
+def create_membrane(dimension, different_number_of_lipids):
+    """
+    Creates a matrix representing a membrane with given dimensions and number of lipids.
+
+    Args:
+        dimension: Tuple representing the dimensions of the membrane (e.g., (10, 10)).
+        different_number_of_lipids: The number of unique lipid types represented by integer values.
+
+    Returns:
+        A numpy array representing the membrane with lipids randomly placed, a set of lipid coordinates,
+        and the dimensions of the matrix.
+    """
+    num_lipids = dimension[0] * dimension[1]
+    if num_lipids > dimension[0] * dimension[1]:
+        raise ValueError("Number of lipids exceeds available positions in the matrix.")
+
+    membrane = np.zeros(dimension, dtype=int)
+    lipid_coords = set()
+
+    # Generate unique coordinates until we reach num_lipids
+    while len(lipid_coords) < num_lipids:
+        coord = (np.random.randint(0, dimension[0]), np.random.randint(0, dimension[1]))
+        lipid_coords.add(coord)
+
+    # Place lipids in the membrane
+    for coord in lipid_coords:
+        membrane[coord] = np.random.randint(1, different_number_of_lipids + 1)
+
+    symmetrical_matrix = create_symmetrical_matrix(different_number_of_lipids)
+
+    return membrane, lipid_coords, dimension, symmetrical_matrix
+
+def moving_the_lipids(membrane, lipid_coords, dimension, symmetrical_matrix, different_number_of_lipids, num_interactions):
+    """
+    Transfers lipids to neighboring cells a specified number of times.
+
+    Args:
+        membrane: Matrix representing the membrane with lipids.
+        lipid_coords: Set of lipid coordinates in the membrane.
+        dimension: Dimensions of the membrane matrix.
+        different_number_of_lipids: Number of lipid types.
+        num_interactions: Number of times lipids should be moved to neighboring cells.
+
+    Returns:
+        The modified membrane with updated lipid positions and a moves count matrix.
+    """
+    moves = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # Possible moves: up, down, left, right
+    moves_count = np.zeros(dimension)
+
+    for _ in range(num_interactions):
+        for coord in list(lipid_coords):
+            move = moves[np.random.randint(len(moves))]
+            new_coord = (coord[0] + move[0], coord[1] + move[1])
+
+            SPright, SPleft, SPup, SPdown = create_switch_probabilities(membrane, symmetrical_matrix, dimension)
+
+            if move == (-1, 0):
+                switch_probability = SPleft
+
+            if move == (1, 0):
+                switch_probability = SPright
+
+            if move == (0, -1):
+                switch_probability = SPup
+
+            if move == (0, 1):
+                switch_probability = SPdown
+
+            condition = random.random()
+            if condition < switch_probability[coord]:
+                condition = 1
+            else:
+                condition = 0
+
+            # Check if the new coordinate is within bounds and meets the movement condition
+            if (0 <= new_coord[0] < dimension[0]) and (0 <= new_coord[1] < dimension[1]) and \
+               condition == 1:
+
+                # Move the lipid to the new coordinate
+                membrane_copy = membrane.copy()
+                membrane[coord] = membrane[new_coord]
+                membrane[new_coord] = membrane_copy[coord]
+
+                # Update lipid coordinates and moves count
+                lipid_coords.remove(coord)
+                lipid_coords.add(new_coord)
+                moves_count[coord] += 1
+                moves_count[new_coord] += 1
+
+    return membrane, moves_count
+
+def create_switch_probabilities(membrane, symmetrical_matrix, dimension):
+    """
+    Creates movement probabilities based on the surrounding lipid environment and movement matrix.
+    The probabilities are based on the symmetrical matrix for each direction (right, left, up, down).
+
+    Args:
+        membrane: The matrix representing the lipid membrane.
+        symmetrical_matrix: The matrix representing the movement frequencies between neighboring positions.
+        dimension: The dimensions of the membrane matrix.
+
+    Returns:
+        Four directional movement probability matrices: right, left, up, down.
+    """
+    SFright = np.zeros(dimension)
+    SFleft = np.zeros(dimension)
+    SFup = np.zeros(dimension)
+    SFdown = np.zeros(dimension)
+
+    # Calculate the maximum value from the symmetrical matrix for normalization
+    max_value = np.max(symmetrical_matrix)
+
+    # Iterate over each position in the membrane
+    for n in range(dimension[0]):
+        for m in range(dimension[1]):
+            # Check if there is a neighbor to the right
+            if m < dimension[1] - 1:
+                SFright[n, m] = symmetrical_matrix[membrane[n, m]-1, membrane[n, m + 1]-1]
+            # Check if there is a neighbor to the left
+            if m > 0:
+                SFleft[n, m] = symmetrical_matrix[membrane[n, m]-1, membrane[n, m - 1]-1]
+            # Check if there is a neighbor above
+            if n > 0:
+                SFup[n, m] = symmetrical_matrix[membrane[n, m]-1, membrane[n - 1, m]-1]
+            # Check if there is a neighbor below
+            if n < dimension[0] - 1:
+                SFdown[n, m] = symmetrical_matrix[membrane[n, m]-1, membrane[n + 1, m]-1]
+
+    # Apply the equation to calculate the switch probability for each direction
+    SPright = SFright / (3 * max_value)
+    SPleft = SFleft / (3 * max_value)
+    SPup = SFup / (3 * max_value)
+    SPdown = SFdown / (3 * max_value)
+
+    return SPright, SPleft, SPup, SPdown
+
+
+# Example usage:
+membrane, lipid_coords, dimension, symmetrical_matrix = create_membrane((50, 50), different_number_of_lipids=4)
+
+# Generate symmetrical matrix for movement possibilities
+membrane, moves_count = moving_the_lipids(membrane, lipid_coords, dimension, symmetrical_matrix, different_number_of_lipids=4, num_interactions=10, )
+
+# Create switch probability matrices for each direction
+SPright, SPleft, SPup, SPdown = create_switch_probabilities(membrane, symmetrical_matrix, dimension)
+
+
+# Plot the symmetrical matrix and direction matrices
+plt.figure(figsize=(12, 10))
+
+plt.subplot(2, 3, 1)
+plt.imshow(moves_count, cmap='viridis')
+plt.colorbar()
+plt.title("Membrane mobility")
+
+plt.subplot(2, 3, 2)
+plt.imshow(membrane, cmap='viridis')
+plt.colorbar()
+plt.title("Membrane distribution")
+
+plt.subplot(2, 3, 3)
+plt.imshow(SPright, cmap='viridis')
+plt.colorbar()
+plt.title("Membrane right interaction")
+
+plt.subplot(2, 3, 4)
+plt.imshow(SPleft, cmap='viridis')
+plt.colorbar()
+plt.title("Membrane left interaction")
+
+plt.subplot(2, 3, 5)
+plt.imshow(SPup, cmap='viridis')
+plt.colorbar()
+plt.title("Membrane up interaction")
+
+plt.subplot(2, 3, 6)
+plt.imshow(SPdown, cmap='viridis')
+plt.colorbar()
+plt.title("Membrane down interaction")
+
+plt.tight_layout()
+plt.show()
